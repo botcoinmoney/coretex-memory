@@ -383,15 +383,16 @@ active.
 - **Symptom.** As of 2026-08-19 a fresh `coretex sync` against the live coordinator refuses closed
   with `StrictServeError`: `release … not the CoreTex release shape (manifest_schema_version=4);
   got 2`.
-- **Cause.** Two of the profiles the live frontier currently routes — `conv.pref.v1` and
-  `doc.tool.v1` — are bound to pre-v4 releases awaiting the operator-side §10.3 re-cut.
-  `event.schema.v1` is already v4. Sync validates the whole routed set, so the two pre-v4 bindings
-  refuse the run regardless of which profile you configured.
-- **Nothing to fix locally.** This is server-published state, not a defect in this distribution,
-  your venv or your config. There is no flag to bypass it: the strict schema-v4 gate is deliberate
-  (§3 step 4) and overriding it would defeat the point of the check.
+- **What it means.** The live frontier **is** the current CoreTex state; two of its routed profile
+  releases are still packaged in the earlier manifest shape, and the coordinator is finishing the
+  re-cut of those remaining slots into the current package format. Sync validates the whole routed
+  set and lands as soon as that re-cut is confirmed on chain.
+- **Nothing to fix locally, and nothing to work around.** This is not a defect in this
+  distribution, your venv or your config. There is no flag to bypass it, no reduced profile set to
+  target instead, and no alternative state to point at: the strict current-package gate is
+  deliberate (§3 step 4) and overriding it would defeat the point of the check.
 - **No local state is written.** The refusal happens before the commit point — no pipeline was
-  activated and your `memory.db` was not touched. Retry after the operator re-cut.
+  activated and your `memory.db` was not touched. Simply re-run `coretex sync` later.
 
 ### Known cosmetic issues
 

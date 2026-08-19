@@ -19,7 +19,7 @@ coretex init --coordinator https://coordinator.agentmoney.net \
 coretex sync
 ```
 
-Heads-up: live sync is currently gated on an operator-side release re-cut — see ADAPTER.md
+Heads-up: the coordinator is finishing the re-cut of the remaining routed releases into the current package format; `coretex sync` lands once that is confirmed on chain
 "Live frontier note".
 
 ## Audit pin
