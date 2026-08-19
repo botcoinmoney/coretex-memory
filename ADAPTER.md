@@ -342,27 +342,16 @@ active.
 
 ### Live edge note — `coretex sync` and the coordinator's User-Agent rule
 
-- **Symptom.** On a venv built by hand (not by `install.sh`), `coretex sync` fails immediately with
-  `SyncError` / the §6 "did not serve the requested CoreTex v5 artifact" refusal, driven by an
-  **HTTP 403** on the first artifact fetch. It is refuse-closed: nothing is activated and no state
-  is written.
-- **Cause.** The live coordinator sits behind an edge that rejects requests whose `User-Agent` is
-  `Python-urllib/*` (Cloudflare rule 1010). `coretex-memory-agent 0.1.9` fetches the content-addressed
-  artifacts through `urllib` with the interpreter's default UA. The chain reads are unaffected — they
-  already send their own UA — so the failure lands only on step 2 of the sync flow, never on step 1.
-- **Resolution.** `install.sh` handles this for you: step `4b` writes `coretex_edge_ua_shim.py` plus
-  a `zzz-coretex-edge-ua-shim.pth` that imports it into the new venv's `site-packages`, installing a
-  default `urllib` opener with an adapter-identifying UA, and then fails closed if the shim did not
-  take effect. It is an envelope shim — it modifies no wheel, is scoped to that one virtualenv, and
-  is a no-op once the edge rule is relaxed. Opt out with `export CORETEX_ADAPTER_UA_SHIM=0`.
-- **Not `sitecustomize.py`.** Debian and Ubuntu ship `/usr/lib/pythonX.Y/sitecustomize.py`, and the
-  stdlib directory precedes `site-packages` on `sys.path`, so a `sitecustomize.py` dropped into the
-  venv is silently shadowed and never runs. The `.pth` is executed by `site` on every interpreter
-  start for the venv, including the sandboxed canary worker subprocess.
-- **Manual installers** (anyone who `pip install`s the three wheels without running `install.sh`)
-  must create the same two files, in
-  `$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')` —
-  `coretex_edge_ua_shim.py`:
+As of 2026-08-19, default `Python-urllib` is allowed on `/coretex/v5/*`. `GET /v1/*` still 403s
+that UA. `coretex sync` only talks to `/coretex/v5`, so the historical 1010 on artifact fetch is
+closed. `install.sh` step `4b` still writes the venv UA shim; it is inert on the live v5 path and
+harmless. `/v1` remains blocked, which is why the skill uses `GET /coretex/v5/status` as the epoch
+clock rather than `GET /v1/epoch`.
+
+Manual installers who want the shim anyway (defense in depth, or a venv that also hits `/v1`)
+create the same two files in
+`$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')` —
+`coretex_edge_ua_shim.py`:
 
   ```python
   import os
@@ -380,19 +369,20 @@ active.
 
 ### Live frontier note (2026-08-19)
 
-- **Symptom.** As of 2026-08-19 a fresh `coretex sync` against the live coordinator refuses closed
-  with `StrictServeError`: `release … not the CoreTex release shape (manifest_schema_version=4);
-  got 2`.
-- **What it means.** The live frontier **is** the current CoreTex state; two of its routed profile
-  releases are still packaged in the earlier manifest shape, and the coordinator is finishing the
-  re-cut of those remaining slots into the current package format. Sync validates the whole routed
-  set and lands as soon as that re-cut is confirmed on chain.
-- **Nothing to fix locally, and nothing to work around.** This is not a defect in this
-  distribution, your venv or your config. There is no flag to bypass it, no reduced profile set to
-  target instead, and no alternative state to point at: the strict current-package gate is
-  deliberate (§3 step 4) and overriding it would defeat the point of the check.
-- **No local state is written.** The refusal happens before the commit point — no pipeline was
-  activated and your `memory.db` was not touched. Simply re-run `coretex sync` later.
+The live frontier is one current CoreTex package. As of epoch 180 head
+`0x06bcdca6a8c02aafc13217baa6c40665264485d3a3bf8e780999acf0541366ad` (`transitionCount=2`),
+every routed slot is `manifest_schema_version=4` / `wrapper_format=3`:
+
+| slot | release root |
+|---|---|
+| `conv.pref.v1` | `767eae855d8ba5c7c7a41b429e715cdbd56a44304f2351b46cd631419e8b59f8` |
+| `doc.tool.v1` | `dc87312f0eb78957962f530647d2473f09a56f7a2e3a590638f84cd5f99f3274` |
+| `event.schema.v1` | `a25af38e790cdf2d196c389a4aaebf3f294f0111d8a970ae2bde2cf4d5cd92d6` |
+
+`coretex sync` activates that single state. There is no older package to point at, no profile
+fork, and no recut still in progress. The adapter's IR gate is the current shape
+(`manifest_schema_version=4`, sandbox-only serve, `wrapper_format=3`). If sync refuses, that is a
+defect — re-run it against `GET /coretex/v5/status` and report the refusal; do not bypass the gate.
 
 ### Known cosmetic issues
 

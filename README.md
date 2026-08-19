@@ -19,8 +19,9 @@ coretex init --coordinator https://coordinator.agentmoney.net \
 coretex sync
 ```
 
-Heads-up: the coordinator is finishing the re-cut of the remaining routed releases into the current package format; `coretex sync` lands once that is confirmed on chain
-"Live frontier note".
+The live frontier is the current CoreTex package (`manifest_schema_version=4`,
+`wrapper_format=3` on all three routed slots). `coretex sync` activates that state; see
+ADAPTER.md §"Live frontier note".
 
 ## Audit pin
 
