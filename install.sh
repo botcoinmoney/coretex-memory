@@ -6,16 +6,14 @@
 #   ./install.sh [VENV_DIR]        # default: ./coretex-venv
 #   CORETEX_PYTHON=/usr/bin/python3.10 ./install.sh
 #
-# Creates a fresh virtualenv, makes sure the three product wheels are present as RAW BYTES
-# (using the local wheels/ copy when it already matches, otherwise fetching them from the live
-# kit by content hash, with GitHub release adapter-0.1.10 as fallback), verifies all three
-# digests fail-closed, and installs them in dependency order. The only other download is the
-# runtime's single external dependency, wasmtime, from PyPI. Air-gapped boxes: pre-run
-# `pip download wasmtime==46.0.1 -d wheels/` on a connected machine, then re-run this script.
+# Fetches and verifies the three product wheels (local wheels/ if the digests already
+# match, otherwise the live kit by content hash, then GitHub release adapter-0.1.10),
+# then installs them into VENV_DIR. Safe to re-run: an existing venv is reused.
+# The only other download is wasmtime from PyPI. Air-gapped boxes: pre-run
+# `pip download 'wasmtime>=46.0.1,<47' -d wheels/` on a connected machine.
 #
-# Interpreter: a stable CPython 3.10+ (releaselevel=final). Hermes 0.20.4 on Ubuntu's
-# 3.11.0rc1 segfaults in coretex_memory.store.MemoryStore._create_schema; that interpreter is
-# refused. Override with CORETEX_PYTHON if you need a specific final 3.10–3.13 binary.
+# Interpreter: stable CPython 3.10+ (releaselevel=final). Prerelease interpreters
+# (for example 3.11.0rc1) are refused. Override with CORETEX_PYTHON.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +39,7 @@ pick_python() {
   if [ -n "${CORETEX_PYTHON:-}" ]; then
     command -v "$CORETEX_PYTHON" >/dev/null || die "CORETEX_PYTHON=$CORETEX_PYTHON is not executable"
     python_is_final_310 "$CORETEX_PYTHON" \
-      || die "CORETEX_PYTHON=$CORETEX_PYTHON is not a stable CPython 3.10+ (got $("$CORETEX_PYTHON" -V 2>&1)). Hermes 0.20.4 on 3.11.0rc1 segfaults in MemoryStore._create_schema; use /usr/bin/python3.10 or a final 3.11/3.12."
+      || die "CORETEX_PYTHON=$CORETEX_PYTHON is not a stable CPython 3.10+ (got $("$CORETEX_PYTHON" -V 2>&1)). Prerelease builds (rc/a/b) are refused."
     printf '%s\n' "$CORETEX_PYTHON"
     return 0
   fi
@@ -52,7 +50,7 @@ pick_python() {
       return 0
     fi
   done
-  die "no stable CPython 3.10+ on PATH (releaselevel=final). PATH's python3 is often Hermes' 3.11.0rc1, which segfaults in coretex_memory.store with no JSON refusal. Install python3.10 (distro) or set CORETEX_PYTHON to a final 3.10–3.13 binary. Do not host this runtime inside a 3.11.0rc1 Hermes venv."
+  die "no stable CPython 3.10+ on PATH (releaselevel=final). Install python3.10+ from your distro, or set CORETEX_PYTHON to a final 3.10–3.13 binary."
 }
 
 command -v sha256sum >/dev/null || die "sha256sum not found"
@@ -88,12 +86,19 @@ printf '%s  %s\n%s  %s\n%s  %s\n' "$H1" "$W1" "$H2" "$W2" "$H3" "$W3" >"$SUMS"
 (cd "$WHEELS" && sha256sum -c "$SUMS") \
   || die "WHEEL DIGEST MISMATCH — refusing to install. Delete the bad file(s) in $WHEELS and re-run; do not override."
 
-say "3. fresh virtualenv at $VENV"
-[ -e "$VENV" ] && die "$VENV already exists; remove it or pass another path"
-"$PY" -m venv "$VENV"
+say "3. virtualenv at $VENV"
+if [ -x "$VENV/bin/python" ]; then
+  echo "reusing existing venv"
+elif [ -e "$VENV" ] && [ -z "$(ls -A "$VENV" 2>/dev/null || true)" ]; then
+  "$PY" -m venv "$VENV"
+elif [ -e "$VENV" ]; then
+  die "$VENV exists and is not a virtualenv. Pass another path, or remove it."
+else
+  "$PY" -m venv "$VENV"
+fi
 # shellcheck disable=SC1091
 . "$VENV/bin/activate"
-command -v pip >/dev/null || die "this venv has no pip (uv venvs often omit it). Rebuild with '$PY -m venv' or run '$PY -m ensurepip' in a Hermes venv before installing these wheels there."
+command -v pip >/dev/null || die "this venv has no pip. Rebuild with '$PY -m venv $VENV' or run '$PY -m ensurepip'."
 
 say "4. install the three wheels in dependency order"
 # wasmtime>=46.0.1,<47 is resolved from PyPI here (the one external dependency).
@@ -143,8 +148,9 @@ else
   echo "verified: urllib default opener now sends a coretex-memory-adapter User-Agent"
 fi
 
-say "5. resolved configuration"
-coretex init --show
+say "5. write default config (idempotent)"
+coretex init --coordinator https://coordinator.agentmoney.net \
+             --rpc https://mainnet.base.org --profile event.schema.v1
 
 say "INSTALL OK"
 cat <<EOF
@@ -152,13 +158,9 @@ Activate this environment with:
 
     source "$VENV/bin/activate"
 
-Then configure it against the live deployment (see README §2):
+Then sync the live CoreTex state:
 
-    coretex init --coordinator https://coordinator.agentmoney.net \\
-                 --rpc https://mainnet.base.org --profile event.schema.v1
     coretex sync
 
-Hermes 0.20.4 cannot share this venv if Hermes requires CPython >=3.11 and this venv is 3.10.
-Do not initialize the provider inside a 3.11.0rc1 interpreter. uv venvs may need
-\`python -m ensurepip\` before pip-installing these wheels.
+coordinator is the base URL (https://coordinator.agentmoney.net) — do not append /coretex/v5.
 EOF

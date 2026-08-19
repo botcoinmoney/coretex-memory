@@ -1,30 +1,22 @@
-This is the consumer manual from coretex-portable-adapter-dist.tar.gz (identical content).
+# CoreTex portable memory-IR adapter
 
-# CoreTex portable memory-IR adapter — standalone distribution
+Run the CoreTex agent memory adapter on a fresh Linux box against the live coordinator and
+Base mainnet.
 
-Everything needed to run the CoreTex agent memory adapter on a **fresh Linux box** against the
-**live** CoreTex v5 coordinator and Base mainnet, and to wire it into a Hermes agent harness.
-
-This distribution carries only wheels, checksums, the one compatibility lock a Hermes install
-consumes, this README, a verify script and the Apache-2.0 license. No source tree, no tests, no
-internal documents.
+This distribution carries wheels, checksums, a compatibility lock, this manual, `install.sh`,
+`verify.sh`, and the Apache-2.0 license.
 
 | file | what it is |
 |---|---|
-| `wheels/coretex_memory-0.1.5-py3-none-any.whl` | the trusted local runtime (memory store, hook worker, renderer) |
-| `wheels/coretex_memory_agent-0.1.10-py3-none-any.whl` | the portable adapter: `AgentMemory`, chain/coordinator sync, activation, adapters, sidecar, `coretex` CLI |
-| `wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl` | the Hermes `MemoryProvider` and its discovery-shim installer |
+| `wheels/coretex_memory-0.1.5-py3-none-any.whl` | runtime (memory store, hook worker, renderer) |
+| `wheels/coretex_memory_agent-0.1.10-py3-none-any.whl` | adapter: `AgentMemory`, `coretex` CLI, sync |
+| `wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl` | optional unofficial Hermes provider |
 | `wheels/SHA256SUMS` | `sha256sum -c`-able digests of the three wheels |
-| `compatibility/compatibility-lock-0.1.5.json` | the runtime/ABI compatibility lock **as a file path**, which the Hermes provider config requires (see §5) |
-| `install.sh` | one-command consumer install: fetch/verify the three wheels, venv, install in order |
-| `verify.sh` | reproducible from-scratch install + offline self-check |
-| `LICENSE` | Apache-2.0 (identical text ships inside all three wheels) |
+| `install.sh` | fetch/verify wheels, create or reuse a venv, `coretex init` |
+| `verify.sh` | from-scratch install + offline self-check |
+| `LICENSE` | Apache-2.0 |
 
-The runtime 0.1.5 and hermes 0.1.4 wheels are byte copies from the frozen runtime packet
-`9d91ae3afd8f92ddcca6c6be1c34bbdf66b63748d113d835272b3e2e8c4c051f`
-(preservation tag `coretex-runtime-cef-20260731-r12`). Agent **0.1.10** is a companion cut on
-that same runtime floor: it only changes the chain-head walk so `coretex sync` binds the current
-epoch's live root (the same head miners bind). Digests:
+Digests:
 
 ```
 b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory-0.1.5-py3-none-any.whl
@@ -36,14 +28,10 @@ b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory
 
 ## 1. Install (fresh box, Python 3.10+ and pip only)
 
-`./install.sh [VENV_DIR]` does everything in this section for you — it uses the local `wheels/`
-copy when its digests already match, otherwise fetches by content hash from the live kit
-(`/coretex/v5/kit/file/<sha256>`, including agent 0.1.10) and, on a kit miss, from GitHub
-release `adapter-0.1.10`. It then verifies all three fail-closed, installs them in dependency
-order, copies the packaged compatibility lock next to itself when writable, and prints
-`coretex init --show`. `install.sh` and `verify.sh` share the same CPython picker: they refuse
-prerelease CPython (Hermes 0.20.4's 3.11.0rc1 segfaults in `MemoryStore._create_schema`) and
-name that crash when `CORETEX_PYTHON` points at an rc. The manual equivalent:
+`./install.sh [VENV_DIR]` fetches the wheels (local `wheels/` when digests match, otherwise
+the live kit, then GitHub `adapter-0.1.10`), verifies them fail-closed, installs into a venv
+(reusing the path if it is already a venv), and runs `coretex init` with the live defaults.
+It refuses prerelease CPython. Manual equivalent:
 
 ```bash
 python3 -m venv ~/coretex-venv
@@ -252,95 +240,36 @@ activated state. If nothing has been activated it raises `PipelineNotSyncedError
   routed set from `coretex state status` (staged `profiles`) or from `coretex sync`'s
   `canary.profiles` (that map has the release ids). `fetch.profiles` may be `{slot: null}` —
   that field is schema-check evidence, not the release map; use canary/status.
-- `coretex init --show` prints `default_state_dir` from a home-relative constant; the resolved
-  `resolution.state_dir` / `resolution.store` honor `XDG_DATA_HOME`. Compare those.
+- `coretex init` is idempotent. `coretex init --show` never writes. After a successful init,
+  `--show` still reports `initialized: false` (that flag means "this invocation did not write").
+  The file stuck if `config_present` is true.
 - Sync is safe to re-run. It replaces the pipeline only; your `memory.db` is untouched by it.
 
-## 5. Wire the Hermes provider into a Hermes harness
+## 5. Hermes (optional, unofficial)
 
-The provider is a real `agent.memory_provider.MemoryProvider` subclass. Its integration contract:
-
-**(a) Interpreters.** The CoreTex consumer venv and the Hermes harness are usually **two
-interpreters**. Hermes 0.20.4 declares `requires-python = ">=3.11,<3.14"`; this runtime's
-proven consumer path is **CPython 3.10.12 final** (and other *final* 3.10–3.13). They cannot
-share a 3.10 venv, and they must not share Ubuntu's `3.11.0rc1` (Hermes Agent 0.20.4 ships
-that on some boxes): `MemoryStore._create_schema` **segfaults** there with no JSON refusal,
-and `provider.initialize()` dies the same way. `install.sh` refuses rc builds and prefers a
-final 3.10+ on PATH (`CORETEX_PYTHON=` to override).
-
-Provider wheel 0.1.4 is qualified against Hermes **0.19.1** / `cc4cab2`. Hermes 0.20.4 still
-**discovers** `coretex`. Do **not** `hermes config set memory.provider coretex` on an rc1
-interpreter — that would segfault sessions. uv Hermes venvs often have no `pip`; run
-`python -m ensurepip` before installing these wheels into that interpreter.
-
-The shim's `plugin.yaml` still says `version: 0.1.3` while the wheel is 0.1.4. That is
-known envelope drift, not a second product.
-
-Without Hermes importable from the CoreTex venv, `HERMES_AVAILABLE` is `False`, the shim
-installer still works, and constructing a provider raises `HermesUnavailableError` naming
-the 0.19.1 pin. That error is the qualification floor, not a claim that 0.20.4 cannot
-discover the plugin.
-
-**(b) Install the discovery shim** into the Hermes home:
+CoreTex is not an official Hermes memory provider. Do not expect `hermes memory --help`
+to mention it, and do not wait for a PyPI `hermes` pin — Hermes 0.20.4 is not published
+there. Skip this section unless you already run Hermes and want to wire the unofficial
+provider wheel yourself.
 
 ```bash
 coretex-hermes-provider install --hermes-home "$HERMES_HOME"
-# -> $HERMES_HOME/plugins/coretex/{__init__.py,plugin.yaml}
 ```
 
-The shim's `register(ctx)` calls `ctx.register_memory_provider(CoreTexHermesMemoryProvider())`.
-The provider's `name` is `coretex`.
+Write `$HERMES_HOME/coretex/config.json` yourself (format
+`coretex-hermes-provider-config/v2`). `state_dir` must be the directory `coretex sync`
+activated; `compatibility_lock` must be a real file path (use
+`python -c "from coretex_memory_agent.config import packaged_lock_path; print(packaged_lock_path())"`).
+`profile_id` must be a profile the activated composition routes.
 
-**(c) Write the provider config** at `$HERMES_HOME/coretex/config.json` — either through Hermes's
-own setup flow (the provider publishes a config schema for `state_dir`, `compatibility_lock`,
-`profile_id`, `token_budget`, `consolidation_policy`) or directly. Format `…/v2`, every field
-below is required, and an unknown or missing field is refused by name:
+Hermes and the CoreTex consumer venv are usually two interpreters. This runtime's
+consumer path is a *final* CPython 3.10–3.13. Do not point Hermes at Ubuntu's
+`3.11.0rc1`: `MemoryStore._create_schema` segfaults there. Provider wheel 0.1.4 was
+qualified against Hermes 0.19.1. The shim's `plugin.yaml` still says `version: 0.1.3`
+while the wheel is 0.1.4 — envelope drift, not a second product.
 
-```json
-{
-  "format": "coretex-hermes-provider-config/v2",
-  "state_dir": "/home/OPERATOR/.local/share/coretex/state",
-  "compatibility_lock": "<output of packaged_lock_path() or ./compatibility/compatibility-lock-0.1.5.json>",
-  "profile_id": "event.schema.v1",
-  "token_budget": 4096,
-  "consolidation_policy": "session_end+event_delta=256+logical_storage_pressure=0.75+operator_maintenance",
-  "tenant": "hermes",
-  "counter_id": null,
-  "allow_prospective_genesis": false
-}
-```
-
-- `state_dir` **must be the directory `coretex sync` activated** — the provider opens a
-  `CanonicalStateManager` over it and refuses with `no verified canonical state is active` if
-  nothing was synced.
-- `compatibility_lock` must be a **path to a file**. `install.sh` copies the packaged lock to
-  `./compatibility/compatibility-lock-0.1.5.json` next to itself when that directory is writable
-  (curl-only installs have no tarball `compatibility/` tree). It is byte-identical to the copy
-  inside the agent wheel, so
-  `python -c "from coretex_memory_agent.config import packaged_lock_path; print(packaged_lock_path())"`
-  is the canonical value and always works after the wheels are installed.
-- `profile_id` defaults to `conv.pref.v1` in the config schema, but it must name a profile the
-  activated composition routes — set it to the same profile you configured in §2.
-- `is_available()` returns `False` (silently, by design) unless the config format matches,
-  `state_dir` is a directory and `compatibility_lock` is a file. If Hermes reports the provider as
-  unavailable, check those three first.
-
-**(d) Runtime behaviour inside Hermes.** `initialize(session_id, hermes_home=…, agent_identity=…,
-user_id=…, agent_context=…)` builds the runtime for the `primary` agent context only. Per-run state
-lives at `$HERMES_HOME/coretex/providers/<run_id>.json` with the backing store under
-`$HERMES_HOME/coretex/runtime/<state_id>/<generation>/runs/<run_id>/memory.db`; `run_id` is derived
-from `{tenant, user, identity, profile}`. `prefetch` injects the rendered context (previously
-injected memory blocks are stripped before ingest, so served memory is never re-ingested as
-evidence); `sync_turn` ingests user/assistant messages plus this turn's tool calls and results;
-`on_memory_write` maps to supersede/retract/document-ingest. Four tools are exposed to the model:
-`coretex_memory_status`, `coretex_memory_correct`, `coretex_memory_retract`,
-`coretex_memory_hard_delete`.
-
-**(e) State transitions under Hermes.** `sync_state(...)` and `rollback_state(...)` stage a new
-canonical state, probe it, write a `…pending.json` transition record, activate, then swap the live
-backend and close the old one. A crash between those steps is recovered on the next construction
-from the durable pointer. A failure before the atomic pointer change leaves the previous state
-active.
+The rest of Hermes runtime behaviour (prefetch, tools, state transitions) is in the
+provider wheel; it is not part of the CoreTex consumer path.
 
 ## 6. Troubleshooting (all strings below are the code's own)
 
