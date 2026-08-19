@@ -9,7 +9,7 @@ This distribution carries wheels, checksums, a compatibility lock, this manual, 
 | file | what it is |
 |---|---|
 | `wheels/coretex_memory-0.1.5-py3-none-any.whl` | runtime (memory store, hook worker, renderer) |
-| `wheels/coretex_memory_agent-0.1.11-py3-none-any.whl` | adapter: `AgentMemory`, `coretex` CLI, sync |
+| `wheels/coretex_memory_agent-0.1.12-py3-none-any.whl` | adapter: `AgentMemory`, `coretex` CLI, sync, `CoreTexBackend.from_synced` |
 | `wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl` | optional unofficial Hermes provider |
 | `wheels/SHA256SUMS` | `sha256sum -c`-able digests of the three wheels |
 | `install.sh` | fetch/verify wheels, create or reuse a venv, `coretex init` |
@@ -20,7 +20,7 @@ Digests:
 
 ```
 b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory-0.1.5-py3-none-any.whl
-2e05f1741aa2a297bbdfb786980937a9ad754d577d1b177d546effe290153907  coretex_memory_agent-0.1.11-py3-none-any.whl
+1d9a69215a4d880baf74319c435ccb0c1767d7f4e6b69174a78a31ff977b224b  coretex_memory_agent-0.1.12-py3-none-any.whl
 4a3409cb72123bdfe1b7fe5c5481d1a0e35430be85c235e74d58183e6e854438  coretex_hermes_provider-0.1.4-py3-none-any.whl
 ```
 
@@ -29,7 +29,7 @@ b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory
 ## 1. Install (fresh box, Python 3.10+ and pip only)
 
 `./install.sh [VENV_DIR]` fetches the wheels (local `wheels/` when digests match, otherwise
-the live kit, then GitHub `adapter-0.1.11`), verifies them fail-closed, installs into a venv
+the live kit, then GitHub `adapter-0.1.12`), verifies them fail-closed, installs into a venv
 (reusing the path if it is already a venv), and runs `coretex init` with the live defaults.
 It refuses prerelease CPython. Manual equivalent:
 
@@ -41,7 +41,7 @@ cd /path/to/coretex-portable-adapter-dist
 (cd wheels && sha256sum -c SHA256SUMS)
 
 pip install wheels/coretex_memory-0.1.5-py3-none-any.whl
-pip install wheels/coretex_memory_agent-0.1.11-py3-none-any.whl
+pip install wheels/coretex_memory_agent-0.1.12-py3-none-any.whl
 pip install wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl
 ```
 
@@ -200,6 +200,25 @@ memory.flush_session(); memory.close()
 activated state. If nothing has been activated it raises `PipelineNotSyncedError` naming
 `coretex sync` rather than degrading to a reference-only mode.
 
+Neutral eval comparisons bind that same last-synced composition. After `coretex init && coretex
+sync`, do not pass a minted `manifest_path` / `manifest_root` — those are the offline
+conformance fixture, not live CoreTex:
+
+```python
+from coretex_memory_agent.backend import CoreTexBackend
+
+backend = CoreTexBackend.from_synced(workdir="./eval-runs")
+backend.reset("longmemeval-v1-run")
+backend.ingest(record_or_trajectory)
+result = backend.context(question, token_budget=512)
+backend.checkpoint()
+backend.close()
+```
+
+`from_synced` before any sync raises the same `PipelineNotSyncedError`. Each `reset(run_id)`
+still isolates sqlite under `<workdir>/runs/<run_id>/memory.db`. Re-run `coretex sync` when
+the live head moves; the next `from_synced` constructs against the newly activated tree.
+
 ## 4. What to expect from the live surface right now
 
 - **As of 2026-08-19 the live epoch is 180** with `transitionCount=2`. The confirmed head is
@@ -221,7 +240,7 @@ activated state. If nothing has been activated it raises `PipelineNotSyncedError
   | `event.schema.v1` | `a25af38e790cdf2d196c389a4aaebf3f294f0111d8a970ae2bde2cf4d5cd92d6` | current-package MPL1; hook m6 |
   | `legacy.structured.v1` | (baseline) | not a live routed target |
 
-  A successful 0.1.11 sync that shows those roots and `baseline: false` is correct. 0.1.9 would
+  A successful 0.1.12 sync that shows those roots and `baseline: false` is correct. 0.1.9 would
   have activated genesis `86deac65…` (`manifest_schema_version=2`) instead.
 - **`health().active_release` is the serving module.** `health()["release_id"]`,
   `health()["serving_module"]`, and `health()["active_release"]` are the live CoreTex package.
@@ -318,7 +337,7 @@ create the same two files in
       import urllib.request as _u
       _o = _u.build_opener()
       _o.addheaders = [("User-Agent",
-          "coretex-memory-adapter/0.1.11 (+https://github.com/botcoinmoney/coretex-memory)")]
+          "coretex-memory-adapter/0.1.12 (+https://github.com/botcoinmoney/coretex-memory)")]
       _u.install_opener(_o)
   ```
 
@@ -338,7 +357,7 @@ every routed slot is `manifest_schema_version=4` / `wrapper_format=3`:
 | `doc.tool.v1` | `dc87312f0eb78957962f530647d2473f09a56f7a2e3a590638f84cd5f99f3274` |
 | `event.schema.v1` | `a25af38e790cdf2d196c389a4aaebf3f294f0111d8a970ae2bde2cf4d5cd92d6` |
 
-`coretex sync` (agent **0.1.11**) reads the current epoch's live root when that epoch is
+`coretex sync` (agent **0.1.12**) reads the current epoch's live root when that epoch is
 non-empty — the same head miners bind — not the last sealed epoch. 0.1.9 waited for
 finalization and activated genesis packaging while epoch 180 already held this state. There is
 no older package to point at, no profile fork, and no recut still in progress. The adapter's IR
@@ -366,20 +385,20 @@ coordinator or RPC call made. The script uses the same CPython picker as `instal
 2.  python ......................... Python 3.10.12 (>= 3.10 required)
 3.  fresh virtualenv ............... created
 4.  install (dependency order) ..... coretex-memory 0.1.5 (+ wasmtime 46.0.1 from PyPI)
-                                     coretex-memory-agent 0.1.11
+                                     coretex-memory-agent 0.1.12
                                      coretex-hermes-provider 0.1.4
 5.  imports + identities
       coretex_memory ............... 0.1.5
-      coretex_memory_agent ......... 0.1.11  build 0.1.11+serving.release
+      coretex_memory_agent ......... 0.1.12  build 0.1.12+synced.pipeline
       coretex_hermes_provider ...... 0.1.4   build 0.1.4+hermes.cc4cab2.chain-content-state
       hermes_available ............. False   (no Hermes in this venv, as expected)
-      runtime_compatibility ........ runtime 0.1.5 / agent 0.1.11+serving.release /
+      runtime_compatibility ........ runtime 0.1.5 / agent 0.1.12+synced.pipeline /
                                      module_abi coretex-memory/miner-module/v1 v2 /
                                      policy_abi 1 / store_schema 1
       chain_id ..................... 8453
       anchors ...................... registry 0xa4d8a7Bb…9ad3, verifier 0x82384E4D…1Ed4,
                                      mining 0xB61BC748…7dCd
-6.  packaged lock == shipped lock .. sha256 a87f7ac8e3e24d7eb2c1b5209e90358e903caecd338e17a9cff0122ee9f31a75
+6.  packaged lock == shipped lock .. sha256 65c2aec0dea422627545f9aa28abbf28d38f145227a9191db58e89c3744eeb39
                                      and packaged_compatibility_lock() validated against the
                                      installed runtime
 7.  agent CLI ..................... `coretex --help` -> {init,state,config,sync,verify}

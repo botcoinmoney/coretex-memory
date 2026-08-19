@@ -74,7 +74,7 @@ fi
 pip install --disable-pip-version-check "${PIP_ARGS[@]}" \
   "$WHEELS/coretex_memory-0.1.5-py3-none-any.whl"
 pip install --disable-pip-version-check "${PIP_ARGS[@]}" \
-  "$WHEELS/coretex_memory_agent-0.1.11-py3-none-any.whl"
+  "$WHEELS/coretex_memory_agent-0.1.12-py3-none-any.whl"
 pip install --disable-pip-version-check "${PIP_ARGS[@]}" \
   "$WHEELS/coretex_hermes_provider-0.1.4-py3-none-any.whl"
 

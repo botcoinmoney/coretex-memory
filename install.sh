@@ -7,7 +7,7 @@
 #   CORETEX_PYTHON=/usr/bin/python3.10 ./install.sh
 #
 # Fetches and verifies the three product wheels (local wheels/ if the digests already
-# match, otherwise the live kit by content hash, then GitHub release adapter-0.1.11),
+# match, otherwise the live kit by content hash, then GitHub release adapter-0.1.12),
 # then installs them into VENV_DIR. Safe to re-run: an existing venv is reused.
 # The only other download is wasmtime from PyPI. Air-gapped boxes: pre-run
 # `pip download 'wasmtime>=46.0.1,<47' -d wheels/` on a connected machine.
@@ -23,7 +23,7 @@ KIT="https://coordinator.agentmoney.net/coretex/v5/kit/file"
 
 # wheel filename : sha256 (also the kit's content address) — the product's identity.
 W1="coretex_memory-0.1.5-py3-none-any.whl";        H1="b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d"
-W2="coretex_memory_agent-0.1.11-py3-none-any.whl"; H2="2e05f1741aa2a297bbdfb786980937a9ad754d577d1b177d546effe290153907"
+W2="coretex_memory_agent-0.1.12-py3-none-any.whl"; H2="1d9a69215a4d880baf74319c435ccb0c1767d7f4e6b69174a78a31ff977b224b"
 W3="coretex_hermes_provider-0.1.4-py3-none-any.whl"; H3="4a3409cb72123bdfe1b7fe5c5481d1a0e35430be85c235e74d58183e6e854438"
 
 say() { printf '\n== %s ==\n' "$1"; }
@@ -67,11 +67,11 @@ for pair in "$W1 $H1" "$W2 $H2" "$W3 $H3"; do
     echo "have  $name"
   else
     echo "fetch $name"
-    GH="https://github.com/botcoinmoney/coretex-memory/releases/download/adapter-0.1.11/$name"
+    GH="https://github.com/botcoinmoney/coretex-memory/releases/download/adapter-0.1.12/$name"
     if curl -fsSL --retry 3 -o "$WHEELS/$name.part" "$KIT/$want" 2>/dev/null; then
       echo "  (kit $want)"
     elif curl -fsSL --retry 3 -o "$WHEELS/$name.part" "$GH"; then
-      echo "  (kit miss; fetched $name from GitHub release adapter-0.1.11)"
+      echo "  (kit miss; fetched $name from GitHub release adapter-0.1.12)"
     else
       die "download failed for $name (tried $KIT/$want and $GH)"
     fi
@@ -135,7 +135,7 @@ if os.environ.get("CORETEX_ADAPTER_UA_SHIM", "1") != "0":
     import urllib.request as _u
     _o = _u.build_opener()
     _o.addheaders = [("User-Agent",
-        "coretex-memory-adapter/0.1.11 (+https://github.com/botcoinmoney/coretex-memory)")]
+        "coretex-memory-adapter/0.1.12 (+https://github.com/botcoinmoney/coretex-memory)")]
     _u.install_opener(_o)
 PYSHIM
 printf 'import coretex_edge_ua_shim\n' >"$PURELIB/zzz-coretex-edge-ua-shim.pth"
