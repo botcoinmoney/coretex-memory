@@ -1,7 +1,7 @@
 {
   "format": "coretex-canonical-state-compatibility-lock/v1",
   "compatibility": {
-    "agent_build": "0.1.10+live.head",
+    "agent_build": "0.1.11+serving.release",
     "module_abi": "coretex-memory/miner-module/v1",
     "module_abi_version": 2,
     "policy_abi_version": 1,
