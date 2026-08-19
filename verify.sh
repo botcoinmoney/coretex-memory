@@ -10,6 +10,9 @@
 # and NO call to a chain RPC. The only network access is pip resolving the runtime's single
 # external dependency (wasmtime) from PyPI; set CORETEX_VERIFY_OFFLINE=1 and drop a wasmtime
 # wheel into wheels/ to run with --no-index instead.
+#
+# Interpreter: same picker as install.sh. A stable CPython 3.10+ (releaselevel=final).
+# CORETEX_PYTHON=rc1 exits 1 and names MemoryStore._create_schema; it does not build a venv.
 set -euo pipefail
 
 DIST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -25,24 +28,38 @@ export HERMES_HOME="$SANDBOX/hermes"
 mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$HERMES_HOME"
 
 say() { printf '\n== %s ==\n' "$1"; }
+die() { printf 'verify.sh: %s\n' "$1" >&2; exit 1; }
+
+python_is_final_310() {
+  "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) and sys.version_info.releaselevel == "final" else 1)' \
+    >/dev/null 2>&1
+}
+
+pick_python() {
+  local py
+  if [ -n "${CORETEX_PYTHON:-}" ]; then
+    command -v "$CORETEX_PYTHON" >/dev/null || die "CORETEX_PYTHON=$CORETEX_PYTHON is not executable"
+    python_is_final_310 "$CORETEX_PYTHON" \
+      || die "CORETEX_PYTHON=$CORETEX_PYTHON is not a stable CPython 3.10+ (got $("$CORETEX_PYTHON" -V 2>&1)). Hermes 0.20.4 on 3.11.0rc1 segfaults in MemoryStore._create_schema; use /usr/bin/python3.10 or a final 3.11/3.12."
+    printf '%s\n' "$CORETEX_PYTHON"
+    return 0
+  fi
+  for py in python3.12 python3.11 python3.10 python3; do
+    command -v "$py" >/dev/null 2>&1 || continue
+    if python_is_final_310 "$py"; then
+      printf '%s\n' "$py"
+      return 0
+    fi
+  done
+  die "no stable CPython 3.10+ on PATH (releaselevel=final). PATH's python3 is often Hermes' 3.11.0rc1, which segfaults in coretex_memory.store with no JSON refusal. Install python3.10 (distro) or set CORETEX_PYTHON to a final 3.10–3.13 binary. Do not host this runtime inside a 3.11.0rc1 Hermes venv."
+}
 
 say "1. wheel checksums"
 (cd "$WHEELS" && sha256sum -c SHA256SUMS)
 
 say "2. python"
-PY="${CORETEX_PYTHON:-}"
-if [ -z "$PY" ]; then
-  for cand in python3.12 python3.11 python3.10 python3; do
-    command -v "$cand" >/dev/null 2>&1 || continue
-    if "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) and sys.version_info.releaselevel == "final" else 1)'; then
-      PY="$cand"
-      break
-    fi
-  done
-fi
-[ -n "$PY" ] || { echo "verify.sh: no stable CPython 3.10+ (final) on PATH" >&2; exit 1; }
-"$PY" --version
-"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) and sys.version_info.releaselevel == "final" else 1)'
+PY="$(pick_python)"
+echo "$PY ($("$PY" -V 2>&1))"
 
 say "3. fresh virtualenv at $VENV"
 "$PY" -m venv "$VENV"

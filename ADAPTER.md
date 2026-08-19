@@ -39,10 +39,11 @@ b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory
 `./install.sh [VENV_DIR]` does everything in this section for you — it uses the local `wheels/`
 copy when its digests already match, otherwise fetches by content hash from the live kit
 (`/coretex/v5/kit/file/<sha256>`, including agent 0.1.10) and, on a kit miss, from GitHub
-release `adapter-0.1.10`. It refuses prerelease CPython (Hermes 0.20.4's 3.11.0rc1 segfaults
-in `MemoryStore`). It then verifies all three fail-closed, installs them in dependency order,
-copies the packaged compatibility lock next to itself when writable, and prints
-`coretex init --show`. The manual equivalent:
+release `adapter-0.1.10`. It then verifies all three fail-closed, installs them in dependency
+order, copies the packaged compatibility lock next to itself when writable, and prints
+`coretex init --show`. `install.sh` and `verify.sh` share the same CPython picker: they refuse
+prerelease CPython (Hermes 0.20.4's 3.11.0rc1 segfaults in `MemoryStore._create_schema`) and
+name that crash when `CORETEX_PYTHON` points at an rc. The manual equivalent:
 
 ```bash
 python3 -m venv ~/coretex-venv
@@ -350,7 +351,7 @@ active.
 | `… reports chain id N, but the packaged trust anchors name 8453 (base-mainnet); refusing to read canonical state from another chain` | the RPC is not Base mainnet. |
 | `cannot reach the RPC endpoint …` / `… was refused by …` | endpoint down or rate-limiting. The read is paced; retry, or use another public Base RPC. |
 | `currentEpoch() at block N returned no data — the anchored address … may hold no contract on this endpoint's chain` | RPC is serving a chain/fork without the deployed contracts. |
-| `Segmentation fault` / `Fatal Python error` in `coretex_memory/store.py` / `_create_schema` | the interpreter is a prerelease (seen on Hermes 0.20.4's **3.11.0rc1**). Nothing activated. Rebuild the venv with `/usr/bin/python3.10` or another *final* 3.10–3.13 (`install.sh` refuses rc builds). Do not `initialize()` the Hermes provider on that rc1. |
+| `Segmentation fault` / `Fatal Python error` in `coretex_memory/store.py` / `_create_schema` | the interpreter is a prerelease (seen on Hermes 0.20.4's **3.11.0rc1**). Nothing activated. Rebuild the venv with `/usr/bin/python3.10` or another *final* 3.10–3.13 (`install.sh` and `verify.sh` refuse rc builds and name this crash). Do not `initialize()` the Hermes provider on that rc1. A 0.20.x provider wheel does not fix it — the crash is in frozen `coretex-memory` 0.1.5. |
 | `no live or finalized epoch within …` | no current non-empty epoch and no finalized predecessor in the lookback window. |
 | `epoch N reports a zero live state root; there is no canonical state to activate at this position` | nothing published at that position yet. |
 | `frontier artifact hashes to X under the activation canonicalization but was published at Y` / `… does not hash to its requested root` | the coordinator served bytes that do not match the requested root. Hard refusal — never override. |
@@ -429,7 +430,8 @@ refusal; do not bypass the gate.
 `./verify.sh [VENV_DIR]` was **executed** against these exact wheels on Linux x86_64 with
 CPython 3.10.12, in a throwaway venv with `XDG_CONFIG_HOME`/`XDG_DATA_HOME`/`HERMES_HOME` pointed
 at a temp sandbox so no real config or state was read or written. Result: **VERIFY OK**, no live
-coordinator or RPC call made.
+coordinator or RPC call made. The script uses the same CPython picker as `install.sh`; passing
+`CORETEX_PYTHON` at a prerelease exits 1 with the `MemoryStore._create_schema` sentence.
 
 ```
 1.  wheel checksums ................ 3/3 OK (sha256sum -c SHA256SUMS)
