@@ -25,10 +25,10 @@ ADAPTER.md §"Live frontier note".
 
 ## Audit pin
 
-The product identity is the sha256 of the three wheels. Runtime 0.1.5 and hermes 0.1.4
-are also their content address in the live kit at
-`https://coordinator.agentmoney.net/coretex/v5/kit/file/<sha256>`. The 0.1.10 agent wheel
-is on this GitHub release (`install.sh` falls back there on a kit miss):
+The product identity is the sha256 of the three wheels. The live kit at
+`https://coordinator.agentmoney.net/coretex/v5/kit/file/<sha256>` is the byte authority
+(runtime 0.1.5, agent **0.1.10**, hermes 0.1.4). `install.sh` falls back to this GitHub
+release only on a kit miss:
 
 ```
 b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory-0.1.5-py3-none-any.whl

@@ -30,11 +30,22 @@ say "1. wheel checksums"
 (cd "$WHEELS" && sha256sum -c SHA256SUMS)
 
 say "2. python"
-python3 --version
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "python 3.10+ required")'
+PY="${CORETEX_PYTHON:-}"
+if [ -z "$PY" ]; then
+  for cand in python3.12 python3.11 python3.10 python3; do
+    command -v "$cand" >/dev/null 2>&1 || continue
+    if "$cand" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) and sys.version_info.releaselevel == "final" else 1)'; then
+      PY="$cand"
+      break
+    fi
+  done
+fi
+[ -n "$PY" ] || { echo "verify.sh: no stable CPython 3.10+ (final) on PATH" >&2; exit 1; }
+"$PY" --version
+"$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) and sys.version_info.releaselevel == "final" else 1)'
 
 say "3. fresh virtualenv at $VENV"
-python3 -m venv "$VENV"
+"$PY" -m venv "$VENV"
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 

@@ -37,9 +37,11 @@ b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory
 ## 1. Install (fresh box, Python 3.10+ and pip only)
 
 `./install.sh [VENV_DIR]` does everything in this section for you — it uses the local `wheels/`
-copy when its digests already match, otherwise fetches by content hash from the live kit and, on a
-kit miss (the 0.1.10 agent wheel is not in the frozen kit), from GitHub release `adapter-0.1.10`.
-It then verifies all three fail-closed, installs them in dependency order and prints
+copy when its digests already match, otherwise fetches by content hash from the live kit
+(`/coretex/v5/kit/file/<sha256>`, including agent 0.1.10) and, on a kit miss, from GitHub
+release `adapter-0.1.10`. It refuses prerelease CPython (Hermes 0.20.4's 3.11.0rc1 segfaults
+in `MemoryStore`). It then verifies all three fail-closed, installs them in dependency order,
+copies the packaged compatibility lock next to itself when writable, and prints
 `coretex init --show`. The manual equivalent:
 
 ```bash
@@ -211,48 +213,72 @@ activated state. If nothing has been activated it raises `PipelineNotSyncedError
 
 ## 4. What to expect from the live surface right now
 
-- **As of 2026-08-19 the live epoch is 180**, and its confirmed head is **inherited from epoch 179
-  via `lazy_inheritance`** — the active root is
-  `0x803c90ceb0e2cbfb663c564b912ecd9f4dea6485da3ca97f71b7b8c4961051ef`. Epoch numbers move on
+- **As of 2026-08-19 the live epoch is 180** with `transitionCount=2`. The confirmed head is
+  **epoch 180's own live root** (`source: epoch_live_root`), not inheritance from 179:
+  `0x06bcdca6a8c02aafc13217baa6c40665264485d3a3bf8e780999acf0541366ad`. Epoch numbers move on
   their own clock; the root is the thing to compare. Read both from
   `GET /coretex/v5/status` → `epoch.head` (`epoch`, `root`, `source`, `inheritedFromEpoch`).
-- **Bind `epoch.head.root` from `/coretex/v5/status` — never `composition.epoch` or
-  `composition.parentFrontierRoot`.** Right after an epoch roll the composition/frontier documents
-  legitimately report an *earlier* epoch than `epoch.head.epoch` (at the time of writing,
-  `composition.epoch` is `179` while `epoch.head.epoch` is `180`): a new epoch that has accepted no
-  transition yet inherits the previous epoch's frontier unchanged, so the document published at
-  that root still carries the epoch it was minted in. That is inheritance, not a failed sync and
-  not a stale coordinator. `composition.parentFrontierRoot` is the *predecessor* root and is never
-  the thing to activate against. `coretex state status` likewise reports the epoch its chain read
-  resolved (the most recent finalized epoch at the confirmed block, which can lag `epoch.head.epoch`
-  by one after a roll); what must match is the root.
-- The surface is essentially a **starter surface with no mining history**. Expect profiles bound to
-  the **baseline release** — i.e. no mined improvement has yet displaced it as the current CoreTex
-  state: the canary block reports `{"baseline": true}` for those, `health()`'s
-  `current_release_root` is `null`, and `capabilities()` lists no mined hooks. That is the correct,
-  non-degraded state for a fresh frontier — not a failure.
-- **This is an operations test, not a content-richness test.** What it proves: install, config
-  resolution, the chain read, content-addressed fetch and local re-hashing, strict-v4 enforcement,
-  the sandboxed canary, atomic activation, ingest/serve round trips, Hermes lifecycle wiring,
-  restart recovery and rollback. Retrieval quality on a starter surface tells you nothing.
-- The four composition slots the runtime knows are `conv.pref.v1`, `doc.tool.v1`,
-  `event.schema.v1` and `legacy.structured.v1` (baseline). The configured `profile` must be one the
-  **activated** composition actually routes; if it is not, the open refuses and names what is
-  routed. Read the routed set from `coretex state status` (the staged `profiles` map) or from
-  `coretex sync`'s `fetch.profiles` and set `profile` to match.
+- **Bind `epoch.head.root` from `/status`.** After an empty roll, a new epoch with
+  `transitionCount=0` inherits the previous frontier (`lazy_inheritance`); that is inheritance,
+  not a failed sync. Epoch 180 is not that case. `composition.parentFrontierRoot` is the
+  *predecessor* root and is never the thing to activate against.
+- **The live package is mined, not baseline.** Canary reports `baseline: false` and the current
+  schema-4 / wrapper-3 roots:
+
+  | slot | release root | notes |
+  |---|---|---|
+  | `conv.pref.v1` | `767eae855d8ba5c7c7a41b429e715cdbd56a44304f2351b46cd631419e8b59f8` | mined; hooks m4+m5+m6 |
+  | `doc.tool.v1` | `dc87312f0eb78957962f530647d2473f09a56f7a2e3a590638f84cd5f99f3274` | mined; hook m6 |
+  | `event.schema.v1` | `a25af38e790cdf2d196c389a4aaebf3f294f0111d8a970ae2bde2cf4d5cd92d6` | current-package MPL1; hook m6 |
+  | `legacy.structured.v1` | (baseline) | not a live routed target |
+
+  A successful 0.1.10 sync that shows those roots and `baseline: false` is correct. 0.1.9 would
+  have activated genesis `86deac65…` (`manifest_schema_version=2`) instead.
+- **`health().serving_champion` is the CoreTex package. `health().active_release` is not.**
+  `active_release: {source: bundled-default, policy_id: DCA-2, release_id: null}` is the
+  **bundled WASM retrieval policy** inside `coretex-memory` 0.1.5. Prefetch `serving_release`
+  repeats that policy identity. The live module is `serving_champion.release_id` (and
+  `capabilities().champion_release_id` / canary `release_id`). Do not conclude the champion is
+  inactive because `active_release.release_id` is null.
+- **One sqlite store is the corpus.** `profile` selects which champion *serves* that corpus; it
+  does not namespace events. `AgentMemory.open(profile="conv.pref.v1")` then `doc.tool.v1` then
+  `event.schema.v1` all read/write the same `memory.db` unless you pass a distinct `store=` (or
+  config `store`) per corpus. Sync never touches `memory.db`.
+- **This is an operations test, not a content-richness test.** Ingest of a one-line fact
+  prefetching that same citation is the thin starter IR. Retrieval quality is miner runway, not
+  an install failure.
+- The configured `profile` must be one the **activated** composition actually routes. Read the
+  routed set from `coretex state status` (staged `profiles`) or from `coretex sync`'s
+  `canary.profiles` (that map has the release ids). `fetch.profiles` may be `{slot: null}` —
+  that field is schema-check evidence, not the release map; use canary/status.
+- `coretex init --show` prints `default_state_dir` from a home-relative constant; the resolved
+  `resolution.state_dir` / `resolution.store` honor `XDG_DATA_HOME`. Compare those.
 - Sync is safe to re-run. It replaces the pipeline only; your `memory.db` is untouched by it.
 
 ## 5. Wire the Hermes provider into a Hermes harness
 
 The provider is a real `agent.memory_provider.MemoryProvider` subclass. Its integration contract:
 
-**(a) Same interpreter.** Hermes must be importable from the venv the three wheels are installed
-into. Without it, `HERMES_AVAILABLE` is `False`, the shim installer still works, and constructing a
-provider raises `HermesUnavailableError` naming Hermes `0.19.1` / source commit
-`cc4cab2f592e60a197e796506de9168f74baf3ea` — the exact release this provider build
-(`0.1.4+hermes.cc4cab2.chain-content-state`) is pinned to. The recorded qualification environment
-for this integration was x86_64 / CPython 3.12 with an effective Python intersection of
-`>=3.11,<3.14`; the adapter itself supports 3.10+, so build the Hermes venv on 3.11–3.13.
+**(a) Interpreters.** The CoreTex consumer venv and the Hermes harness are usually **two
+interpreters**. Hermes 0.20.4 declares `requires-python = ">=3.11,<3.14"`; this runtime's
+proven consumer path is **CPython 3.10.12 final** (and other *final* 3.10–3.13). They cannot
+share a 3.10 venv, and they must not share Ubuntu's `3.11.0rc1` (Hermes Agent 0.20.4 ships
+that on some boxes): `MemoryStore._create_schema` **segfaults** there with no JSON refusal,
+and `provider.initialize()` dies the same way. `install.sh` refuses rc builds and prefers a
+final 3.10+ on PATH (`CORETEX_PYTHON=` to override).
+
+Provider wheel 0.1.4 is qualified against Hermes **0.19.1** / `cc4cab2`. Hermes 0.20.4 still
+**discovers** `coretex`. Do **not** `hermes config set memory.provider coretex` on an rc1
+interpreter — that would segfault sessions. uv Hermes venvs often have no `pip`; run
+`python -m ensurepip` before installing these wheels into that interpreter.
+
+The shim's `plugin.yaml` still says `version: 0.1.3` while the wheel is 0.1.4. That is
+known envelope drift, not a second product.
+
+Without Hermes importable from the CoreTex venv, `HERMES_AVAILABLE` is `False`, the shim
+installer still works, and constructing a provider raises `HermesUnavailableError` naming
+the 0.19.1 pin. That error is the qualification floor, not a claim that 0.20.4 cannot
+discover the plugin.
 
 **(b) Install the discovery shim** into the Hermes home:
 
@@ -273,7 +299,7 @@ below is required, and an unknown or missing field is refused by name:
 {
   "format": "coretex-hermes-provider-config/v2",
   "state_dir": "/home/OPERATOR/.local/share/coretex/state",
-  "compatibility_lock": "/path/to/coretex-portable-adapter-dist/compatibility/compatibility-lock-0.1.5.json",
+  "compatibility_lock": "<output of packaged_lock_path() or ./compatibility/compatibility-lock-0.1.5.json>",
   "profile_id": "event.schema.v1",
   "token_budget": 4096,
   "consolidation_policy": "session_end+event_delta=256+logical_storage_pressure=0.75+operator_maintenance",
@@ -286,11 +312,12 @@ below is required, and an unknown or missing field is refused by name:
 - `state_dir` **must be the directory `coretex sync` activated** — the provider opens a
   `CanonicalStateManager` over it and refuses with `no verified canonical state is active` if
   nothing was synced.
-- `compatibility_lock` must be a **path to a file**. That is the only reason
-  `compatibility/compatibility-lock-0.1.5.json` is shipped here; it is byte-identical to the copy
-  inside the agent wheel (`verify.sh` step 6 proves the equality), so
+- `compatibility_lock` must be a **path to a file**. `install.sh` copies the packaged lock to
+  `./compatibility/compatibility-lock-0.1.5.json` next to itself when that directory is writable
+  (curl-only installs have no tarball `compatibility/` tree). It is byte-identical to the copy
+  inside the agent wheel, so
   `python -c "from coretex_memory_agent.config import packaged_lock_path; print(packaged_lock_path())"`
-  is an equally valid value.
+  is the canonical value and always works after the wheels are installed.
 - `profile_id` defaults to `conv.pref.v1` in the config schema, but it must name a profile the
   activated composition routes — set it to the same profile you configured in §2.
 - `is_available()` returns `False` (silently, by design) unless the config format matches,
@@ -323,7 +350,8 @@ active.
 | `… reports chain id N, but the packaged trust anchors name 8453 (base-mainnet); refusing to read canonical state from another chain` | the RPC is not Base mainnet. |
 | `cannot reach the RPC endpoint …` / `… was refused by …` | endpoint down or rate-limiting. The read is paced; retry, or use another public Base RPC. |
 | `currentEpoch() at block N returned no data — the anchored address … may hold no contract on this endpoint's chain` | RPC is serving a chain/fork without the deployed contracts. |
-| `no finalized epoch within 64 epochs below …` | no finalized epoch in the lookback window at the confirmed block. |
+| `Segmentation fault` / `Fatal Python error` in `coretex_memory/store.py` / `_create_schema` | the interpreter is a prerelease (seen on Hermes 0.20.4's **3.11.0rc1**). Nothing activated. Rebuild the venv with `/usr/bin/python3.10` or another *final* 3.10–3.13 (`install.sh` refuses rc builds). Do not `initialize()` the Hermes provider on that rc1. |
+| `no live or finalized epoch within …` | no current non-empty epoch and no finalized predecessor in the lookback window. |
 | `epoch N reports a zero live state root; there is no canonical state to activate at this position` | nothing published at that position yet. |
 | `frontier artifact hashes to X under the activation canonicalization but was published at Y` / `… does not hash to its requested root` | the coordinator served bytes that do not match the requested root. Hard refusal — never override. |
 | `release manifest self-hash … does not match its publication root …` | same class of failure, at the release layer. |
