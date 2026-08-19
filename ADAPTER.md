@@ -340,6 +340,59 @@ active.
 | `refusing to bind the CoreTex sidecar to '…'` | the sidecar is loopback-only by design; it has no authentication. |
 | `the deep flow needs a published resolver snapshot to reconstruct` | you landed in `coretex verify` / `--deep` without a snapshot. The thin path needs no snapshot at all. |
 
+### Live edge note — `coretex sync` and the coordinator's User-Agent rule
+
+- **Symptom.** On a venv built by hand (not by `install.sh`), `coretex sync` fails immediately with
+  `SyncError` / the §6 "did not serve the requested CoreTex v5 artifact" refusal, driven by an
+  **HTTP 403** on the first artifact fetch. It is refuse-closed: nothing is activated and no state
+  is written.
+- **Cause.** The live coordinator sits behind an edge that rejects requests whose `User-Agent` is
+  `Python-urllib/*` (Cloudflare rule 1010). `coretex-memory-agent 0.1.9` fetches the content-addressed
+  artifacts through `urllib` with the interpreter's default UA. The chain reads are unaffected — they
+  already send their own UA — so the failure lands only on step 2 of the sync flow, never on step 1.
+- **Resolution.** `install.sh` handles this for you: step `4b` writes `coretex_edge_ua_shim.py` plus
+  a `zzz-coretex-edge-ua-shim.pth` that imports it into the new venv's `site-packages`, installing a
+  default `urllib` opener with an adapter-identifying UA, and then fails closed if the shim did not
+  take effect. It is an envelope shim — it modifies no wheel, is scoped to that one virtualenv, and
+  is a no-op once the edge rule is relaxed. Opt out with `export CORETEX_ADAPTER_UA_SHIM=0`.
+- **Not `sitecustomize.py`.** Debian and Ubuntu ship `/usr/lib/pythonX.Y/sitecustomize.py`, and the
+  stdlib directory precedes `site-packages` on `sys.path`, so a `sitecustomize.py` dropped into the
+  venv is silently shadowed and never runs. The `.pth` is executed by `site` on every interpreter
+  start for the venv, including the sandboxed canary worker subprocess.
+- **Manual installers** (anyone who `pip install`s the three wheels without running `install.sh`)
+  must create the same two files, in
+  `$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')` —
+  `coretex_edge_ua_shim.py`:
+
+  ```python
+  import os
+  if os.environ.get("CORETEX_ADAPTER_UA_SHIM", "1") != "0":
+      import urllib.request as _u
+      _o = _u.build_opener()
+      _o.addheaders = [("User-Agent",
+          "coretex-memory-adapter/0.1.9 (+https://github.com/botcoinmoney/coretex-memory)")]
+      _u.install_opener(_o)
+  ```
+
+  and `zzz-coretex-edge-ua-shim.pth` containing the single line `import coretex_edge_ua_shim`. Any
+  UA that is not `Python-urllib/*` works; `install.sh` step `4b` is the reference copy. Confirm with
+  `python -c "import urllib.request as u; print(u._opener.addheaders)"`.
+
+### Live frontier note (2026-08-19)
+
+- **Symptom.** As of 2026-08-19 a fresh `coretex sync` against the live coordinator refuses closed
+  with `StrictServeError`: `release … not the CoreTex release shape (manifest_schema_version=4);
+  got 2`.
+- **Cause.** Two of the profiles the live frontier currently routes — `conv.pref.v1` and
+  `doc.tool.v1` — are bound to pre-v4 releases awaiting the operator-side §10.3 re-cut.
+  `event.schema.v1` is already v4. Sync validates the whole routed set, so the two pre-v4 bindings
+  refuse the run regardless of which profile you configured.
+- **Nothing to fix locally.** This is server-published state, not a defect in this distribution,
+  your venv or your config. There is no flag to bypass it: the strict schema-v4 gate is deliberate
+  (§3 step 4) and overriding it would defeat the point of the check.
+- **No local state is written.** The refusal happens before the commit point — no pipeline was
+  activated and your `memory.db` was not touched. Retry after the operator re-cut.
+
 ### Known cosmetic issues
 
 - `coretex init --show` prints a `default_state_dir` computed from the real home directory even

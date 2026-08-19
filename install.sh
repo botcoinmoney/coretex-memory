@@ -66,6 +66,48 @@ pip install --disable-pip-version-check "$WHEELS/$W1"
 pip install --disable-pip-version-check "$WHEELS/$W2"
 pip install --disable-pip-version-check "$WHEELS/$W3"
 
+say "4b. edge User-Agent shim"
+# The live coordinator sits behind an edge that rejects Python-urllib/* User-Agents (Cloudflare
+# rule 1010). coretex-memory-agent 0.1.9 fetches artifacts with urllib's default UA, so `coretex
+# sync` would 403 refuse-closed without this. The shim is envelope-only: it patches nothing in any
+# wheel, is scoped to this virtualenv, and is a no-op once the edge rule is relaxed.
+#
+# It is delivered as a module + a site .pth that imports it, NOT as sitecustomize.py: Debian and
+# Ubuntu ship their own /usr/lib/pythonX.Y/sitecustomize.py, and the stdlib directory precedes
+# site-packages on sys.path, so a sitecustomize.py written here would be silently shadowed and
+# never run. A .pth in site-packages is executed by `site` on every interpreter start for this
+# venv, including the sandboxed canary worker subprocess.
+PURELIB="$("$VENV/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')" \
+  || die "could not resolve the venv site-packages directory"
+[ -d "$PURELIB" ] || die "resolved site-packages '$PURELIB' is not a directory"
+cat >"$PURELIB/coretex_edge_ua_shim.py" <<'PYSHIM'
+# coretex_edge_ua_shim.py — installed by the coretex-memory adapter's install.sh (envelope shim,
+# not part of any wheel). The live coordinator's edge blocks Python-urllib/* User-Agents
+# (Cloudflare rule 1010); coretex-memory-agent 0.1.9 fetches artifacts via urllib with the
+# default UA, so `coretex sync` would 403 without this. Installs a default opener whose UA
+# identifies the adapter. Scoped to this virtualenv; harmless if the edge rule is relaxed.
+# Loaded by zzz-coretex-edge-ua-shim.pth in the same directory.
+# Opt out: export CORETEX_ADAPTER_UA_SHIM=0
+import os
+if os.environ.get("CORETEX_ADAPTER_UA_SHIM", "1") != "0":
+    import urllib.request as _u
+    _o = _u.build_opener()
+    _o.addheaders = [("User-Agent",
+        "coretex-memory-adapter/0.1.9 (+https://github.com/botcoinmoney/coretex-memory)")]
+    _u.install_opener(_o)
+PYSHIM
+printf 'import coretex_edge_ua_shim\n' >"$PURELIB/zzz-coretex-edge-ua-shim.pth"
+echo "wrote $PURELIB/coretex_edge_ua_shim.py + zzz-coretex-edge-ua-shim.pth"
+if [ "${CORETEX_ADAPTER_UA_SHIM:-1}" = "0" ]; then
+  echo "CORETEX_ADAPTER_UA_SHIM=0 — shim installed but disabled by request; not verifying"
+else
+  # Fail closed: a shim that did not load (e.g. a site that ignores .pth files) would hand the
+  # consumer a venv whose `coretex sync` 403s on its first artifact fetch.
+  "$VENV/bin/python" -c 'import urllib.request as u; ua = dict(getattr(u._opener, "addheaders", []) or {}).get("User-Agent", ""); raise SystemExit(0 if ua.startswith("coretex-memory-adapter/") else 1)' \
+    || die "edge User-Agent shim did not take effect in $PURELIB — refusing to hand over a venv whose \`coretex sync\` would 403 on its first artifact fetch"
+  echo "verified: urllib default opener now sends a coretex-memory-adapter User-Agent"
+fi
+
 say "5. resolved configuration"
 coretex init --show
 

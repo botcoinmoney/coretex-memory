@@ -19,6 +19,9 @@ coretex init --coordinator https://coordinator.agentmoney.net \
 coretex sync
 ```
 
+Heads-up: live sync is currently gated on an operator-side release re-cut — see ADAPTER.md
+"Live frontier note".
+
 ## Audit pin
 
 The product identity is the sha256 of the three wheels (also their content address in the live
