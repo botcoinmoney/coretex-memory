@@ -20,10 +20,11 @@ internal documents.
 | `verify.sh` | reproducible from-scratch install + offline self-check |
 | `LICENSE` | Apache-2.0 (identical text ships inside all three wheels) |
 
-The wheels are byte copies from the frozen runtime packet
+The runtime 0.1.5 and hermes 0.1.4 wheels are byte copies from the frozen runtime packet
 `9d91ae3afd8f92ddcca6c6be1c34bbdf66b63748d113d835272b3e2e8c4c051f`
-(preservation tag `coretex-runtime-cef-20260731-r12`), and their digests were verified against
-that packet's own manifest before copying:
+(preservation tag `coretex-runtime-cef-20260731-r12`). Agent **0.1.10** is a companion cut on
+that same runtime floor: it only changes the chain-head walk so `coretex sync` binds the current
+epoch's live root (the same head miners bind). Digests:
 
 ```
 b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory-0.1.5-py3-none-any.whl
@@ -36,8 +37,9 @@ b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory
 ## 1. Install (fresh box, Python 3.10+ and pip only)
 
 `./install.sh [VENV_DIR]` does everything in this section for you — it uses the local `wheels/`
-copy when its digests already match, otherwise fetches the same wheel bytes from the live kit by
-content hash, verifies all three fail-closed, installs them in dependency order and prints
+copy when its digests already match, otherwise fetches by content hash from the live kit and, on a
+kit miss (the 0.1.10 agent wheel is not in the frozen kit), from GitHub release `adapter-0.1.10`.
+It then verifies all three fail-closed, installs them in dependency order and prints
 `coretex init --show`. The manual equivalent:
 
 ```bash
@@ -359,7 +361,7 @@ create the same two files in
       import urllib.request as _u
       _o = _u.build_opener()
       _o.addheaders = [("User-Agent",
-          "coretex-memory-adapter/0.1.9 (+https://github.com/botcoinmoney/coretex-memory)")]
+          "coretex-memory-adapter/0.1.10 (+https://github.com/botcoinmoney/coretex-memory)")]
       _u.install_opener(_o)
   ```
 

@@ -99,7 +99,7 @@ if os.environ.get("CORETEX_ADAPTER_UA_SHIM", "1") != "0":
     import urllib.request as _u
     _o = _u.build_opener()
     _o.addheaders = [("User-Agent",
-        "coretex-memory-adapter/0.1.9 (+https://github.com/botcoinmoney/coretex-memory)")]
+        "coretex-memory-adapter/0.1.10 (+https://github.com/botcoinmoney/coretex-memory)")]
     _u.install_opener(_o)
 PYSHIM
 printf 'import coretex_edge_ua_shim\n' >"$PURELIB/zzz-coretex-edge-ua-shim.pth"
