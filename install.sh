@@ -20,7 +20,7 @@ KIT="https://coordinator.agentmoney.net/coretex/v5/kit/file"
 
 # wheel filename : sha256 (also the kit's content address) — the product's identity.
 W1="coretex_memory-0.1.5-py3-none-any.whl";        H1="b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d"
-W2="coretex_memory_agent-0.1.9-py3-none-any.whl";  H2="4122a98216f1a559ac69818afd7828d73854f9365aa1f0d7f3bbfa50338729a6"
+W2="coretex_memory_agent-0.1.10-py3-none-any.whl"; H2="1f8e47d6b41ae60b900f172aae4694b9e0aaa3f9ff07a1776f45d3fe67daff17"
 W3="coretex_hermes_provider-0.1.4-py3-none-any.whl"; H3="4a3409cb72123bdfe1b7fe5c5481d1a0e35430be85c235e74d58183e6e854438"
 
 say() { printf '\n== %s ==\n' "$1"; }
@@ -41,8 +41,14 @@ for pair in "$W1 $H1" "$W2 $H2" "$W3 $H3"; do
     echo "have  $name"
   else
     echo "fetch $name"
-    curl -fsSL --retry 3 -o "$WHEELS/$name.part" "$KIT/$want" \
-      || die "download failed for $name ($KIT/$want)"
+    GH="https://github.com/botcoinmoney/coretex-memory/releases/download/adapter-0.1.10/$name"
+    if curl -fsSL --retry 3 -o "$WHEELS/$name.part" "$KIT/$want"; then
+      :
+    elif curl -fsSL --retry 3 -o "$WHEELS/$name.part" "$GH"; then
+      echo "  (kit miss; fetched $name from GitHub release adapter-0.1.10)"
+    else
+      die "download failed for $name (tried $KIT/$want and $GH)"
+    fi
     mv "$WHEELS/$name.part" "$WHEELS/$name"
   fi
 done
@@ -68,7 +74,7 @@ pip install --disable-pip-version-check "$WHEELS/$W3"
 
 say "4b. edge User-Agent shim"
 # The live coordinator sits behind an edge that rejects Python-urllib/* User-Agents (Cloudflare
-# rule 1010). coretex-memory-agent 0.1.9 fetches artifacts with urllib's default UA, so `coretex
+# rule 1010). coretex-memory-agent 0.1.10 fetches artifacts with urllib's default UA, so `coretex
 # sync` would 403 refuse-closed without this. The shim is envelope-only: it patches nothing in any
 # wheel, is scoped to this virtualenv, and is a no-op once the edge rule is relaxed.
 #
@@ -83,7 +89,7 @@ PURELIB="$("$VENV/bin/python" -c 'import sysconfig; print(sysconfig.get_paths()[
 cat >"$PURELIB/coretex_edge_ua_shim.py" <<'PYSHIM'
 # coretex_edge_ua_shim.py — installed by the coretex-memory adapter's install.sh (envelope shim,
 # not part of any wheel). The live coordinator's edge blocks Python-urllib/* User-Agents
-# (Cloudflare rule 1010); coretex-memory-agent 0.1.9 fetches artifacts via urllib with the
+# (Cloudflare rule 1010); coretex-memory-agent 0.1.10 fetches artifacts via urllib with the
 # default UA, so `coretex sync` would 403 without this. Installs a default opener whose UA
 # identifies the adapter. Scoped to this virtualenv; harmless if the edge rule is relaxed.
 # Loaded by zzz-coretex-edge-ua-shim.pth in the same directory.

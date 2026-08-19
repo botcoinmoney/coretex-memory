@@ -1,0 +1,25 @@
+{
+  "format": "coretex-canonical-state-compatibility-lock/v1",
+  "compatibility": {
+    "agent_build": "0.1.10+live.head",
+    "module_abi": "coretex-memory/miner-module/v1",
+    "module_abi_version": 2,
+    "policy_abi_version": 1,
+    "runtime_build": "0.1.5+one.shape",
+    "runtime_version": "0.1.5",
+    "store_schema_version": 1
+  },
+  "identities": {
+    "admission_closure_format": "coretex.rig-state.admission-closure-manifest/v1",
+    "admission_closure_root": "3854f10c558c921e7010d4543f6ecac55a6ba0695991498d29d9584c111cf560",
+    "law_trees": {
+      "benchmark-v2/frontier": "9ccdfe9bcabca32015dd5b5a809f1fa4e383500310cd5b18fbafb86dbdbbfea1",
+      "benchmark-v2/generators": "20a8402bc5de5ca791963efd33a31df09ab9cd451e926399a546d8e431d65d15",
+      "benchmark-v2/miner_abi": "074511156e7bb1088596e81dc0794b11221cbd5a35aa875e6a34d9ac28d9f73d",
+      "benchmark-v2/scoring": "867a96b0bfca26ac462978964f3e6fb238821c0e95c002c5641c4c51b83e07a5",
+      "benchmark-v2/validator": "9f55f31169e08dbb6c695e4edb26e6299e84ee1264f84788b76bc9fdd0939e04",
+      "coretex-memory/coretex_memory": "e0e334dba9d88020e59c493ba1bf9d1ef0cbb9ebbf5b572353a43b9c9261e25b",
+      "v5/production": "16f001dd131a9979f9d255b1647749ae01927c20c9e7ef26825fe0ea900ff234"
+    }
+  }
+}

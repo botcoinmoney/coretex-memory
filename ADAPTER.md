@@ -12,7 +12,7 @@ internal documents.
 | file | what it is |
 |---|---|
 | `wheels/coretex_memory-0.1.5-py3-none-any.whl` | the trusted local runtime (memory store, hook worker, renderer) |
-| `wheels/coretex_memory_agent-0.1.9-py3-none-any.whl` | the portable adapter: `AgentMemory`, chain/coordinator sync, activation, adapters, sidecar, `coretex` CLI |
+| `wheels/coretex_memory_agent-0.1.10-py3-none-any.whl` | the portable adapter: `AgentMemory`, chain/coordinator sync, activation, adapters, sidecar, `coretex` CLI |
 | `wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl` | the Hermes `MemoryProvider` and its discovery-shim installer |
 | `wheels/SHA256SUMS` | `sha256sum -c`-able digests of the three wheels |
 | `compatibility/compatibility-lock-0.1.5.json` | the runtime/ABI compatibility lock **as a file path**, which the Hermes provider config requires (see §5) |
@@ -27,7 +27,7 @@ that packet's own manifest before copying:
 
 ```
 b06c9b2c70297b7003ba1a21e7cde3721ed605c3fc3b7bcb04512a96dfaea32d  coretex_memory-0.1.5-py3-none-any.whl
-4122a98216f1a559ac69818afd7828d73854f9365aa1f0d7f3bbfa50338729a6  coretex_memory_agent-0.1.9-py3-none-any.whl
+1f8e47d6b41ae60b900f172aae4694b9e0aaa3f9ff07a1776f45d3fe67daff17  coretex_memory_agent-0.1.10-py3-none-any.whl
 4a3409cb72123bdfe1b7fe5c5481d1a0e35430be85c235e74d58183e6e854438  coretex_hermes_provider-0.1.4-py3-none-any.whl
 ```
 
@@ -48,7 +48,7 @@ cd /path/to/coretex-portable-adapter-dist
 (cd wheels && sha256sum -c SHA256SUMS)
 
 pip install wheels/coretex_memory-0.1.5-py3-none-any.whl
-pip install wheels/coretex_memory_agent-0.1.9-py3-none-any.whl
+pip install wheels/coretex_memory_agent-0.1.10-py3-none-any.whl
 pip install wheels/coretex_hermes_provider-0.1.4-py3-none-any.whl
 ```
 
@@ -379,10 +379,13 @@ every routed slot is `manifest_schema_version=4` / `wrapper_format=3`:
 | `doc.tool.v1` | `dc87312f0eb78957962f530647d2473f09a56f7a2e3a590638f84cd5f99f3274` |
 | `event.schema.v1` | `a25af38e790cdf2d196c389a4aaebf3f294f0111d8a970ae2bde2cf4d5cd92d6` |
 
-`coretex sync` activates that single state. There is no older package to point at, no profile
-fork, and no recut still in progress. The adapter's IR gate is the current shape
-(`manifest_schema_version=4`, sandbox-only serve, `wrapper_format=3`). If sync refuses, that is a
-defect — re-run it against `GET /coretex/v5/status` and report the refusal; do not bypass the gate.
+`coretex sync` (agent **0.1.10**) reads the current epoch's live root when that epoch is
+non-empty — the same head miners bind — not the last sealed epoch. 0.1.9 waited for
+finalization and activated genesis packaging while epoch 180 already held this state. There is
+no older package to point at, no profile fork, and no recut still in progress. The adapter's IR
+gate is the current shape (`manifest_schema_version=4`, sandbox-only serve, `wrapper_format=3`).
+If sync refuses, that is a defect — re-run it against `GET /coretex/v5/status` and report the
+refusal; do not bypass the gate.
 
 ### Known cosmetic issues
 
@@ -403,14 +406,14 @@ coordinator or RPC call made.
 2.  python ......................... Python 3.10.12 (>= 3.10 required)
 3.  fresh virtualenv ............... created
 4.  install (dependency order) ..... coretex-memory 0.1.5 (+ wasmtime 46.0.1 from PyPI)
-                                     coretex-memory-agent 0.1.9
+                                     coretex-memory-agent 0.1.10
                                      coretex-hermes-provider 0.1.4
 5.  imports + identities
       coretex_memory ............... 0.1.5
-      coretex_memory_agent ......... 0.1.9   build 0.1.9+one.shape
+      coretex_memory_agent ......... 0.1.10  build 0.1.10+live.head
       coretex_hermes_provider ...... 0.1.4   build 0.1.4+hermes.cc4cab2.chain-content-state
       hermes_available ............. False   (no Hermes in this venv, as expected)
-      runtime_compatibility ........ runtime 0.1.5 / agent 0.1.9+one.shape /
+      runtime_compatibility ........ runtime 0.1.5 / agent 0.1.10+live.head /
                                      module_abi coretex-memory/miner-module/v1 v2 /
                                      policy_abi 1 / store_schema 1
       chain_id ..................... 8453
